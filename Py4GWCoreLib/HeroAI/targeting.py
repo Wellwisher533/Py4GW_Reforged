@@ -140,39 +140,13 @@ def TargetAllyWithMostAdjacentEnemies(
         and Utils.Distance(Agent.GetXY(agent_id), player_xy) <= distance
     ]
 
-    enemy_ids = Routines.Agents.GetFilteredEnemyArray(
-        player_xy[0],
-        player_xy[1],
-        distance + adjacent_range,
+    return Routines.Targeting.PickClusteredTarget(
+        adjacent_range,
+        filter_radius=distance,
+        candidate_agent_ids=candidates,
+        min_enemy_targets=min_enemies,
+        candidate_is_enemy=False,
     )
-    enemy_ids = [
-        enemy_id
-        for enemy_id in enemy_ids or []
-        if Agent.IsValid(enemy_id) and Agent.IsAlive(enemy_id)
-    ]
-
-    scored: list[tuple[int, float, int]] = []
-    for agent_id in candidates:
-        target_xy = Agent.GetXY(agent_id)
-        enemy_count = sum(
-            1
-            for enemy_id in enemy_ids
-            if Utils.Distance(target_xy, Agent.GetXY(enemy_id)) <= adjacent_range
-        )
-        if enemy_count < min_enemies:
-            continue
-        scored.append(
-            (
-                -enemy_count,
-                Utils.Distance(target_xy, player_xy),
-                agent_id,
-            )
-        )
-
-    if not scored:
-        return 0
-    scored.sort()
-    return scored[0][2]
 
 
 def TargetMinionOrAllyNonEnchanted(filter_skill_id=0, distance=Range.Spellcast.value):
