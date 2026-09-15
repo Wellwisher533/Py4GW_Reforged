@@ -26,6 +26,7 @@ FIGHTER = ROOT / 'Widgets' / 'Automation' / 'Bots' / 'Runners' / 'OutpostFighter
 MAPS = ROOT / 'Sources' / 'aC_Scripts' / 'OutpostRunner' / 'maps'
 JADE_SEA = MAPS / 'Cantha - The Jade Sea'
 ECHOVALD = MAPS / 'Cantha - Echovald Forest'
+ETERNAL_GROVE_ROUTE = ECHOVALD / '_9_VasburgArmory_To_TheEternalGrove.py'
 SHING_JEA = MAPS / 'Cantha - Shing Jea Island'
 TSUMEI_ROUTE = SHING_JEA / '_1_ShingJeaMonastery_To_TsumeiVillage.py'
 RANKOR_DWC_ROUTE = (
@@ -63,6 +64,7 @@ CANHTA_ROUTE_EXPECTATIONS = {
     ECHOVALD / '_6_VasburgArmory_To_AmatzBasin.py': 'ROUTE-20260910-174813-450',
     ECHOVALD / '_7_HouseZuHeltzer_To_AspenwoodGateKurzick.py': 'ROUTE-20260910-213119-662',
     ECHOVALD / '_8_LutgardisConservatory_To_JadeFlatsKurzick.py': 'ROUTE-20260910-214257-099',
+    ETERNAL_GROVE_ROUTE: 'ROUTE-20260914-211649-677',
     JADE_SEA / '_5_UnwakingWatersLuxon_To_SeafarersRest.py': 'ROUTE-20260910-175318-524',
     JADE_SEA / '_6_SeafarersRest_To_AuriosMines.py': 'ROUTE-20260910-175542-883',
     HARVEST_ROUTE: 'ROUTE-20260910-180114-736',
@@ -503,6 +505,10 @@ class SharedPortalTransitionTests(unittest.TestCase):
 
         class Move:
             @staticmethod
+            def FollowPath(points, step_name=''):
+                calls.append(('direct', list(points), step_name))
+
+            @staticmethod
             def FollowAutoPath(points, step_name='', resume_key=None):
                 calls.append(('path', list(points), (step_name, resume_key)))
 
@@ -612,6 +618,30 @@ class SharedPortalTransitionTests(unittest.TestCase):
         self.assertFalse(owns_map_travel)
         self.assertEqual(calls[0][0], 'path')
         self.assertIsNone(calls[0][2][1])
+
+    def test_direct_path_uses_captured_points_without_autopath(self) -> None:
+        mechanics, _heroes = _load_mechanics_with_fakes()
+        bot, calls = self._bot()
+        owns_map_travel = mechanics.register_botting_segment(
+            bot,
+            'Bridge route',
+            0,
+            {
+                'map_id': 1,
+                'steps': [
+                    {
+                        'type': 'direct_path',
+                        'name': 'Bridge Start to Bridge End',
+                        'path': [(10.0, 20.0), (30.0, 40.0)],
+                    },
+                ],
+            },
+        )
+        self.assertFalse(owns_map_travel)
+        self.assertEqual(
+            calls,
+            [('direct', [(10.0, 20.0), (30.0, 40.0)], 'Bridge Start to Bridge End')],
+        )
 
     def test_opt_in_resume_keys_are_stable_per_segment_step(self) -> None:
         mechanics, _heroes = _load_mechanics_with_fakes()
@@ -942,7 +972,7 @@ class BonePalaceLairOfTheForgottenRouteTests(unittest.TestCase):
 
 class CanthaCapturedRouteTests(unittest.TestCase):
     def test_all_requested_routes_preserve_capture_identity_and_finish_at_an_outpost(self) -> None:
-        self.assertEqual(len(CANHTA_ROUTE_EXPECTATIONS), 15)
+        self.assertEqual(len(CANHTA_ROUTE_EXPECTATIONS), 16)
         for route, capture_id in CANHTA_ROUTE_EXPECTATIONS.items():
             with self.subTest(route=route.name):
                 data = _route_assignments(route)
@@ -984,6 +1014,55 @@ class CanthaCapturedRouteTests(unittest.TestCase):
         self.assertEqual(path[start + 1], (-7429.13, 8685.64))
         for bridge_middle in ((-8807.14, 8797.72), (-8302.41, 8763.81), (-7800.25, 8719.11)):
             self.assertNotIn(bridge_middle, path)
+
+    def test_eternal_grove_route_stitches_death_and_crosses_bridge_directly(self) -> None:
+        data = _route_assignments(ETERNAL_GROVE_ROUTE)
+        outpost_path = next(
+            value for key, value in data.items() if key.endswith('_outpost_path')
+        )
+        segments = next(value for key, value in data.items() if key.endswith('_segments'))
+        steps = segments[0]['steps']
+
+        self.assertEqual(outpost_path[-2:], [(19173.32, 2631.56), (18817.39, 2273.60)])
+        self.assertEqual([step['type'] for step in steps], ['path', 'direct_path', 'path'])
+        self.assertEqual(
+            steps[1]['path'],
+            [(1352.85, 11706.08), (-11.16, 10773.75)],
+        )
+        self.assertEqual(steps[2]['path'][0], (-14.30, 9929.33))
+        self.assertEqual(steps[2]['path'][-1], (-5414.19, 9461.30))
+        self.assertEqual(segments[-1]['steps'], [])
+
+        retained = [point for step in steps for point in step.get('path', [])]
+        self.assertNotIn((18568.48, 2017.34), retained)
+        self.assertNotIn((14692.08, 1762.97), retained)
+        self.assertNotIn((14551.83, 1282.04), retained)
+        self.assertNotIn((374.68, 10965.19), retained)
+
+    def test_eternal_grove_route_uses_shared_450_unit_destination_portal(self) -> None:
+        mechanics, _heroes = _load_mechanics_with_fakes()
+        segments = next(
+            value
+            for key, value in _route_assignments(ETERNAL_GROVE_ROUTE).items()
+            if key.endswith('_segments')
+        )
+        bot, calls = SharedPortalTransitionTests._bot()
+
+        owns_map_travel = mechanics.register_botting_segment(
+            bot,
+            'Vasburg Armory to The Eternal Grove',
+            0,
+            segments[0],
+            target_map_id=222,
+            resume_key_prefix='outpost-fighter:route:9',
+        )
+
+        self.assertTrue(owns_map_travel)
+        self.assertEqual([call[0] for call in calls], ['path', 'direct', 'portal'])
+        portal_call = calls[-1]
+        self.assertEqual(portal_call[2][0], 222)
+        self.assertEqual(portal_call[1][-2], (-5414.19, 9461.30))
+        self.assertAlmostEqual(math.dist(portal_call[1][-2], portal_call[1][-1]), 450.0)
 
     def test_aspenwood_route_omits_stale_cross_map_entry_coordinate(self) -> None:
         route = ECHOVALD / '_7_HouseZuHeltzer_To_AspenwoodGateKurzick.py'

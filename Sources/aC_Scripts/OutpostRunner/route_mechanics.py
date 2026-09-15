@@ -140,6 +140,11 @@ def register_botting_segment(
                         path_kwargs['resume_key'] = resume_key
                     bot.Move.FollowAutoPath(points, **path_kwargs)
             continue
+        if step_type == 'direct_path':
+            points = list(step.get('path', []))
+            if points:
+                bot.Move.FollowPath(points, step_name=label)
+            continue
         if step_type not in {
             'blessing',
             'enter_junundu',
