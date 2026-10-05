@@ -195,6 +195,9 @@ class CombatClass:
         self.natures_blessing = GLOBAL_CACHE.Skill.GetID("Natures_Blessing")
         self.relentless_assault = GLOBAL_CACHE.Skill.GetID("Relentless_Assault")
         self.great_dwarf_weapon = GLOBAL_CACHE.Skill.GetID("Great_Dwarf_Weapon")
+        self.arc_lightning = GLOBAL_CACHE.Skill.GetID("Arc_Lightning")
+        self.shell_shock = GLOBAL_CACHE.Skill.GetID("Shell_Shock")
+        self.lightning_javelin = GLOBAL_CACHE.Skill.GetID("Lightning_Javelin")
         self.preparation_skill_ids = tuple(
             skill_id
             for skill_id in (
@@ -767,6 +770,30 @@ class CombatClass:
         in_range = AgentArray.Filter.ByDistance([pet_id], Player.GetXY(), Range.Spellcast.value)
         return pet_id if pet_id in in_range else 0
 
+    def _resolve_air_magic_target(
+        self,
+        skill_id: int,
+        preferred_enemy_target: int,
+    ) -> int | None:
+        """Keep air-skill optimization inside the engagement HeroAI owns."""
+        if skill_id == self.lightning_javelin:
+            return preferred_enemy_target
+        if skill_id == self.arc_lightning:
+            from .overcast import read_player_overcast_state
+
+            overcast_state = read_player_overcast_state(Player.GetAgentID())
+            if overcast_state is None or overcast_state[0] <= 0:
+                return 0
+            return preferred_enemy_target
+        if skill_id == self.shell_shock:
+            if preferred_enemy_target and not self.HasEffect(
+                preferred_enemy_target,
+                self.cracked_armor,
+            ):
+                return preferred_enemy_target
+            return 0
+        return None
+
 
 
     def GetAppropiateTarget(self, slot: int) -> int:
@@ -811,6 +838,13 @@ class CombatClass:
         double_dragon_target = self._resolve_double_dragon_pet_target(self.skills[slot].skill_id)
         if double_dragon_target is not None:
             return double_dragon_target
+
+        air_magic_target = self._resolve_air_magic_target(
+            self.skills[slot].skill_id,
+            preferred_enemy_target,
+        )
+        if air_magic_target is not None:
+            return air_magic_target
 
         if self.skills[slot].skill_id == self.heroic_refrain:
             if not self.HasEffect(Player.GetAgentID(), self.heroic_refrain):
