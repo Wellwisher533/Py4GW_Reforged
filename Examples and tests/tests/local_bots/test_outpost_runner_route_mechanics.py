@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import importlib.util
 import math
+import sys
 import types
 import unittest
 from pathlib import Path
@@ -18,11 +19,15 @@ SHING_JEA = MAPS / "Cantha - Shing Jea Island"
 VABBI = MAPS / "NF - Vabbi Tour"
 TORMENT = MAPS / "NF - Realm of Torment"
 KOURNA = MAPS / "NF - Kourna"
+DESOLATION = MAPS / "NF - Desolation"
 
 ETERNAL_GROVE_ROUTE = ECHOVALD / "_9_VasburgArmory_To_TheEternalGrove.py"
 TSUMEI_ROUTE = SHING_JEA / "_1_ShingJeaMonastery_To_TsumeiVillage.py"
 RANKOR_DWC_ROUTE = MAPS / "Tyria - Beacon's Perch To Droknars Forge" / "_5_CampRankor_To_DeldrimorWarCamp.py"
 ELONA_SEEKERS_ROUTE = MAPS / "Tyria - Desert Outposts" / "_4_ElonaReach_to_SeekersPassage.py"
+HARVEST_ROUTE = JADE_SEA / "_7_HarvestTemple_To_UnwakingWatersKurzick.py"
+BASALT_ROUTE = DESOLATION / "_1_BonePalace_To_BasaltGrotto.py"
+LAIR_ROUTE = DESOLATION / "_2_BonePalace_To_LairOfTheForgotten.py"
 
 CANHTA_ROUTE_EXPECTATIONS = {
     JADE_SEA / "_1_Cavalon_To_BreakerHollow.py": "ROUTE-20260905-115546-323",
@@ -106,7 +111,48 @@ class SharedRouteMechanicsTests(unittest.TestCase):
             ):
                 calls.append(("portal", list(points), (target_map_id, step_name, resume_key)))
 
-        return types.SimpleNamespace(Move=Move), calls
+        class Interact:
+            @staticmethod
+            def WithNpcAtXY(x, y, step_name=""):
+                calls.append(("npc", (x, y), step_name))
+
+            @staticmethod
+            def WithGadgetAtXY(x, y, step_name=""):
+                calls.append(("gadget", (x, y), step_name))
+
+        class Wait:
+            @staticmethod
+            def UntilCondition(condition, duration=1000):
+                calls.append(("condition", condition, duration))
+
+            @staticmethod
+            def ForMapLoad(target_map_id=0, target_map_name="", timeout_ms=10000):
+                calls.append(("map_load", target_map_id, timeout_ms))
+
+        class Party:
+            @staticmethod
+            def FlagAllHeroes(x, y):
+                calls.append(("flag", (x, y), None))
+
+            @staticmethod
+            def UnflagAllHeroes():
+                calls.append(("unflag", None, None))
+
+        class States:
+            @staticmethod
+            def AddCustomState(execute_fn, name):
+                calls.append(("custom", execute_fn, name))
+
+        return (
+            types.SimpleNamespace(
+                Move=Move,
+                Interact=Interact,
+                Wait=Wait,
+                Party=Party,
+                States=States,
+            ),
+            calls,
+        )
 
     def test_portal_extension_uses_450_units_and_captured_heading(self) -> None:
         mechanics = _load_mechanics()
@@ -176,16 +222,119 @@ class SharedRouteMechanicsTests(unittest.TestCase):
             [("direct", [(10.0, 20.0), (30.0, 40.0)], "Bridge Start to Bridge End")],
         )
 
-    def test_interaction_steps_fail_closed_at_route_boundary(self) -> None:
+    def test_unknown_steps_still_fail_closed_at_route_boundary(self) -> None:
         mechanics = _load_mechanics()
         bot, _calls = self._bot()
-        with self.assertRaisesRegex(ValueError, "public Py4GWCoreLib owner"):
+        with self.assertRaisesRegex(ValueError, "registered public Py4GWCoreLib owners"):
             mechanics.register_botting_segment(
                 bot,
                 "Unsupported route",
                 0,
-                {"map_id": 1, "steps": [{"type": "npc_dialog_sequence"}]},
+                {"map_id": 1, "steps": [{"type": "invented_interaction"}]},
             )
+
+    def test_blessing_composes_public_botting_owners(self) -> None:
+        mechanics = _load_mechanics()
+        bot, calls = self._bot()
+        owns_map_travel = mechanics.register_botting_segment(
+            bot,
+            "Blessing route",
+            0,
+            {
+                "map_id": 1,
+                "steps": [
+                    {
+                        "type": "blessing",
+                        "name": "Margonite Battle",
+                        "target_xy": (10.0, 20.0),
+                        "player_approach_xy": (8.0, 18.0),
+                        "visible_button": 1,
+                        "effect_ids": (1849, 2036, 2037),
+                    }
+                ],
+            },
+        )
+        self.assertFalse(owns_map_travel)
+        self.assertEqual([call[0] for call in calls], ["path", "npc", "custom", "condition"])
+        selected_buttons: list[tuple[int, bool]] = []
+
+        class YieldPlayer:
+            @staticmethod
+            def SendAutomaticDialog(button_number, log=False):
+                selected_buttons.append((button_number, log))
+                yield
+
+        fake_core = types.SimpleNamespace(
+            Routines=types.SimpleNamespace(
+                Yield=types.SimpleNamespace(Player=YieldPlayer),
+            )
+        )
+        previous_core = sys.modules.get("Py4GWCoreLib")
+        sys.modules["Py4GWCoreLib"] = fake_core
+        try:
+            dialog_state = calls[2][1]
+            generator = dialog_state()
+            next(generator)
+            with self.assertRaises(StopIteration):
+                next(generator)
+        finally:
+            if previous_core is None:
+                del sys.modules["Py4GWCoreLib"]
+            else:
+                sys.modules["Py4GWCoreLib"] = previous_core
+        self.assertEqual(selected_buttons, [(0, True)])
+
+    def test_junundu_composes_party_gadget_and_postcondition_owners(self) -> None:
+        mechanics = _load_mechanics()
+        bot, calls = self._bot()
+        mechanics.register_botting_segment(
+            bot,
+            "Junundu route",
+            0,
+            {
+                "map_id": 1,
+                "steps": [
+                    {
+                        "type": "enter_junundu",
+                        "name": "Enter Junundu party",
+                        "target_xy": (10.0, 20.0),
+                        "player_approach_xy": (9.0, 19.0),
+                        "party_regroup_xy": (10.0, 20.0),
+                    }
+                ],
+            },
+        )
+        self.assertEqual(
+            [call[0] for call in calls],
+            ["path", "flag", "condition", "gadget", "condition", "unflag"],
+        )
+
+    def test_dialog_sequence_uses_existing_visible_choice_owner_and_map_wait(self) -> None:
+        mechanics = _load_mechanics()
+        bot, calls = self._bot()
+        owns_map_travel = mechanics.register_botting_segment(
+            bot,
+            "Dedrick route",
+            0,
+            {
+                "map_id": 1,
+                "steps": [
+                    {
+                        "type": "npc_dialog_sequence",
+                        "name": "Gatekeeper Dedrick transfer",
+                        "target_xy": (10.0, 20.0),
+                        "player_approach_xy": (9.0, 19.0),
+                        "visible_button_labels": ("One", "Two", "Three"),
+                        "target_map_id": 2,
+                    }
+                ],
+            },
+        )
+        self.assertTrue(owns_map_travel)
+        self.assertEqual(
+            [call[0] for call in calls],
+            ["path", "npc", "custom", "custom", "custom", "map_load"],
+        )
 
     def test_route_helper_contains_no_private_or_parallel_interaction_owner(self) -> None:
         source = MECHANICS.read_text(encoding="utf-8")
@@ -193,6 +342,9 @@ class SharedRouteMechanicsTests(unittest.TestCase):
         self.assertNotIn("reliable_interaction", source)
         self.assertNotIn("_RouteInteractionRuntime", source)
         self.assertIn("bot.Move.FollowPathAndExitMap", source)
+        self.assertIn("bot.Interact.WithNpcAtXY", source)
+        self.assertIn("bot.Interact.WithGadgetAtXY", source)
+        self.assertIn("Routines.Yield.Player.SendAutomaticDialog", source)
 
     def test_both_consumers_bind_shared_public_route_mechanics(self) -> None:
         for path in (RUNNER, FIGHTER):
@@ -207,15 +359,30 @@ class SharedRouteMechanicsTests(unittest.TestCase):
 
 
 class CapturedRouteTests(unittest.TestCase):
-    def test_route_only_candidate_omits_unowned_interaction_routes(self) -> None:
-        omitted = (
-            MAPS / "NF - Desolation" / "_1_BonePalace_To_BasaltGrotto.py",
-            MAPS / "NF - Desolation" / "_2_BonePalace_To_LairOfTheForgotten.py",
-            JADE_SEA / "_7_HarvestTemple_To_UnwakingWatersKurzick.py",
-        )
-        for route in omitted:
+    def test_interaction_routes_are_restored_with_captured_provenance(self) -> None:
+        expected = {
+            HARVEST_ROUTE: "ROUTE-20260910-180114-736",
+            BASALT_ROUTE: "ROUTE-20260902-140340-849",
+            LAIR_ROUTE: "ROUTE-20260910-151459-766",
+        }
+        for route, capture_id in expected.items():
             with self.subTest(route=route.name):
-                self.assertFalse(route.exists())
+                data = _route_assignments(route)
+                ids = next(value for key, value in data.items() if key.endswith("_ids"))
+                self.assertEqual(ids["source_route_id"], capture_id)
+                source = route.read_text(encoding="utf-8")
+                self.assertNotIn("agent_id_runtime_only", source)
+                self.assertNotIn("captured_at", source)
+
+        harvest_steps = _route_assignments(HARVEST_ROUTE)["_7_harvesttemple_to_unwakingwaterskurzick_segments"][0][
+            "steps"
+        ]
+        self.assertEqual([step["type"] for step in harvest_steps], ["path", "npc_dialog_sequence"])
+        for route in (BASALT_ROUTE, LAIR_ROUTE):
+            segments = next(value for key, value in _route_assignments(route).items() if key.endswith("_segments"))
+            step_types = [step["type"] for segment in segments for step in segment.get("steps", [])]
+            self.assertIn("blessing", step_types)
+            self.assertIn("enter_junundu", step_types)
 
     def test_all_retained_captured_routes_preserve_source_and_destination(self) -> None:
         expected = {**CANHTA_ROUTE_EXPECTATIONS, **NIGHTFALL_ROUTE_EXPECTATIONS}
