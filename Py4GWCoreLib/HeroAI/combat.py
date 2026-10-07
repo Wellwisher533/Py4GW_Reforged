@@ -779,10 +779,7 @@ class CombatClass:
         if skill_id == self.lightning_javelin:
             return preferred_enemy_target
         if skill_id == self.arc_lightning:
-            from .overcast import read_player_overcast_state
-
-            overcast_state = read_player_overcast_state(Player.GetAgentID())
-            if overcast_state is None or overcast_state[0] <= 0:
+            if Agent.GetOvercast(Player.GetAgentID()) <= 0:
                 return 0
             return preferred_enemy_target
         if skill_id == self.shell_shock:
@@ -1645,6 +1642,25 @@ class CombatClass:
 
         player_id = Player.GetAgentID()
         player_is_casting = Agent.IsCasting(player_id)
+
+        max_overcast_fraction = float(
+            getattr(conditions, "MaxOvercastFraction", 0.0) or 0.0
+        )
+        bypass_skill_id = int(
+            getattr(conditions, "MaxOvercastBypassSkillID", 0) or 0
+        )
+        bypass_equipped = bypass_skill_id and any(
+            candidate.skill_id == bypass_skill_id for candidate in self.skills
+        )
+        if (
+            max_overcast_fraction > 0.0
+            and not bypass_equipped
+            and not Routines.Checks.Skills.IsProjectedOvercastAllowed(
+                player_id, skill_id, max_overcast_fraction
+            )
+        ):
+            self.in_casting_routine = False
+            return False, 0
 
         if player_is_casting:
             self.in_casting_routine = False

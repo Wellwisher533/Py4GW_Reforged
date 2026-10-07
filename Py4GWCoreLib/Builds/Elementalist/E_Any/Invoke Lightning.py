@@ -2,14 +2,12 @@ from __future__ import annotations
 
 from Py4GWCoreLib import Agent
 from Py4GWCoreLib import BuildMgr
-from Py4GWCoreLib import GLOBAL_CACHE
 from Py4GWCoreLib import Party
 from Py4GWCoreLib import Player
 from Py4GWCoreLib import Profession
 from Py4GWCoreLib import Routines
 from Py4GWCoreLib import Skill
 from Py4GWCoreLib.Builds.Any.HeroAI import HeroAI_Build
-from Py4GWCoreLib.HeroAI.overcast import read_player_overcast_state
 
 
 INVOKE_LIGHTNING_ID = Skill.GetID("Invoke_Lightning")
@@ -18,33 +16,7 @@ AIR_ATTUNEMENT_ID = Skill.GetID("Air_Attunement")
 ELEMENTAL_LORD_KURZICK_ID = Skill.GetID("Elemental_Lord_kurzick")
 ELEMENTAL_LORD_LUXON_ID = Skill.GetID("Elemental_Lord_luxon")
 LIGHTNING_STRIKE_ID = Skill.GetID("Lightning_Strike")
-
-INVOKE_OVERCAST_LIMIT = 0.50
-
-
-def projected_overcast_fraction(
-    current_overcast: float,
-    current_max_energy: float,
-    added_overcast: float,
-) -> float:
-    """Return projected Overcast against the reconstructed full energy bar."""
-    overcast = max(0.0, float(current_overcast))
-    full_energy = max(0.0, float(current_max_energy) + overcast)
-    if full_energy <= 0.0:
-        return 1.0 if added_overcast > 0.0 else 0.0
-    return max(0.0, overcast + float(added_overcast)) / full_energy
-
-
-def invoke_overcast_allowed(
-    current_overcast: float,
-    current_max_energy: float,
-    invoke_overcast: float,
-) -> bool:
-    return projected_overcast_fraction(
-        current_overcast,
-        current_max_energy,
-        invoke_overcast,
-    ) <= INVOKE_OVERCAST_LIMIT
+SOUL_IGNITION_ID = Skill.GetID("Soul_Ignition") or 3446
 
 
 class Invoke_Lightning_Air(BuildMgr):
@@ -60,6 +32,7 @@ class Invoke_Lightning_Air(BuildMgr):
                 AIR_ATTUNEMENT_ID,
                 ELEMENTAL_LORD_KURZICK_ID,
                 ELEMENTAL_LORD_LUXON_ID,
+                SOUL_IGNITION_ID,
             ],
         )
         if match_only:
@@ -98,18 +71,6 @@ class Invoke_Lightning_Air(BuildMgr):
 
         return False
 
-    def _invoke_allowed(self) -> bool:
-        state = read_player_overcast_state(Player.GetAgentID())
-        if state is None:
-            return False
-        current_overcast, current_max_energy = state
-        invoke_overcast = GLOBAL_CACHE.Skill.Data.GetOvercast(INVOKE_LIGHTNING_ID)
-        return invoke_overcast_allowed(
-            current_overcast,
-            current_max_energy,
-            invoke_overcast,
-        )
-
     def _pick_established_damage_target(self) -> int:
         """Use the fight HeroAI already selected; never acquire one for an AoE."""
         for target_id in (
@@ -141,7 +102,7 @@ class Invoke_Lightning_Air(BuildMgr):
         *,
         reserve_intensity_energy: bool,
     ) -> tuple[int, int]:
-        if self.CanCastSkillID(INVOKE_LIGHTNING_ID) and self._invoke_allowed():
+        if self.CanCastSkillID(INVOKE_LIGHTNING_ID):
             target_id = self._pick_established_damage_target()
             if target_id and (
                 not reserve_intensity_energy
@@ -199,8 +160,6 @@ class Invoke_Lightning_Air(BuildMgr):
 
     def _cast_invoke(self):
         if not self.CanCastSkillID(INVOKE_LIGHTNING_ID):
-            return False
-        if not self._invoke_allowed():
             return False
         target_id = self._pick_established_damage_target()
         if not target_id:
