@@ -665,17 +665,17 @@ BATTLEDEPTHS_MAP_ID = 625
 AOJC_OROZAR_MODEL_ID = 6228
 AOJC_OROZAR_XY = (-3416.0, 17460.0)
 AOJC_OROZAR_APPROACH_XY = (-3389.65, 17385.05)
-# Completed route ROUTE-20260914-202206-921, "Attack on Jalis's Camp".
-# CTC points 0-8 are ordinary movement. Point 9 and its derived continuation
-# belong exclusively to the portal crossing owner; destination-map point 10
-# is intentionally excluded.
+# Reuse Mission Runner's proven Destruction's Depths repeat capture
+# ROUTE-20261004-101158-946 for the CTC-to-Battledepths boundary. Points 9-10
+# preserve the captured crossing vector; the final point is its 450-unit
+# extension so FollowPathAndExitMap cannot stop at the portal edge.
 AOJC_CTC_APPROACH_ROUTE_XY = (
-    (577.75, 1348.44), (919.66, 1718.87), (1259.64, 2087.05),
-    (1573.36, 2478.11), (1736.84, 2955.05), (1777.03, 3454.93),
-    (1588.12, 3920.18), (1104.25, 4055.09), (604.29, 4099.96),
+    (249.28, 1436.89), (657.91, 1728.72), (1038.32, 2055.82),
+    (1357.06, 2443.36), (1598.01, 2882.71), (1624.60, 3382.24),
+    (1626.21, 3884.99), (1159.55, 4075.66), (660.20, 4118.06),
 )
 AOJC_CTC_PORTAL_ROUTE_XY = (
-    (131.31, 4271.58), (-291.70, 4425.07),
+    (187.11, 4285.73), (1.24, 4606.50), (-224.37, 4995.86),
 )
 AOJC_BATTLEDEPTHS_TO_OROZAR_STANDOFF_ROUTE_XY = (
     (-2150.00, 12266.00), (-1861.92, 12687.99), (-1781.53, 13186.33),
