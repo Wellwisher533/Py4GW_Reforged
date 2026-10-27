@@ -29,6 +29,7 @@ _route_mechanics = importlib.reload(_route_mechanics)
 extended_portal_path = _route_mechanics.extended_portal_path
 register_outpost_departure = _route_mechanics.register_outpost_departure
 register_botting_segment = _route_mechanics.register_botting_segment
+requires_physical_outpost_departure = _route_mechanics.requires_physical_outpost_departure
 RUNS_DIR = os.path.join(ac_folder_path, "OutpostRunner", "maps")
 
 MODULE_NAME = "Outpost Runner v2"
@@ -147,12 +148,13 @@ def bot_routine(bot: Botting) -> None:
 
         # -- Exit outpost --
         first_map_id = run.segments[0]["map_id"] if run.segments else 0
-        register_outpost_departure(
-            bot,
-            run.outpost_path,
-            target_map_id=first_map_id,
-            step_name=f'{run.run_name}_leave_outpost',
-        )
+        if requires_physical_outpost_departure(run.outpost_id, run.segments):
+            register_outpost_departure(
+                bot,
+                run.outpost_path,
+                target_map_id=first_map_id,
+                step_name=f'{run.run_name}_leave_outpost',
+            )
 
         # -- Follow explorable segments --
         for seg_i, entry in enumerate(run.segments):

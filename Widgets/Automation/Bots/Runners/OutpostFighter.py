@@ -22,6 +22,7 @@ _route_mechanics = importlib.reload(_route_mechanics)
 extended_portal_path = _route_mechanics.extended_portal_path
 register_outpost_departure = _route_mechanics.register_outpost_departure
 register_botting_segment = _route_mechanics.register_botting_segment
+requires_physical_outpost_departure = _route_mechanics.requires_physical_outpost_departure
 
 BOT_NAME = 'Outpost Fighter'
 MODULE_NAME = BOT_NAME
@@ -94,7 +95,7 @@ def _load_route(definition: RouteDefinition) -> RoutePlan:
     outpost_id = int(ids.get('outpost_id', 0)) if isinstance(ids, dict) else 0
     if outpost_id <= 0:
         raise ValueError('route has no starting outpost ID')
-    if not outpost_path:
+    if not outpost_path and requires_physical_outpost_departure(outpost_id, list(segments)):
         raise ValueError('route has no outpost exit path')
     if not segments:
         raise ValueError('route has no explorable segments')
@@ -152,12 +153,13 @@ def _build_route_steps(bot_instance: Botting, route: RoutePlan, index: int) -> N
     bot_instance.Multibox.ApplyWidgetPolicy(enable_widgets=WIDGETS_TO_ENABLE)
 
     first_map_id = int(route.segments[0].get('map_id', 0))
-    register_outpost_departure(
-        bot_instance,
-        route.outpost_path,
-        target_map_id=first_map_id,
-        step_name=f'{route.definition.run_name}_leave_outpost',
-    )
+    if requires_physical_outpost_departure(route.outpost_id, route.segments):
+        register_outpost_departure(
+            bot_instance,
+            route.outpost_path,
+            target_map_id=first_map_id,
+            step_name=f'{route.definition.run_name}_leave_outpost',
+        )
 
     for segment_index, segment in enumerate(route.segments):
         next_segment = route.segments[segment_index + 1] if segment_index + 1 < len(route.segments) else None

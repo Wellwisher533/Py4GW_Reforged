@@ -73,6 +73,17 @@ def register_outpost_departure(
     )
 
 
+def requires_physical_outpost_departure(
+    outpost_id: int,
+    segments: list[dict[str, Any]],
+) -> bool:
+    """Return whether a route starts by crossing a physical outpost portal."""
+
+    if not segments:
+        return False
+    return int(segments[0].get("map_id", 0)) != int(outpost_id)
+
+
 def _hero_slot_skill(hero_position: int, slot: int) -> int | None:
     from Py4GWCoreLib import GLOBAL_CACHE
 

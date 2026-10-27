@@ -21,6 +21,7 @@ VABBI = MAPS / "NF - Vabbi Tour"
 TORMENT = MAPS / "NF - Realm of Torment"
 KOURNA = MAPS / "NF - Kourna"
 DESOLATION = MAPS / "NF - Desolation"
+REVELRY_ELONA = MAPS / "Wayfarers Reverie - Elona"
 
 ETERNAL_GROVE_ROUTE = ECHOVALD / "_9_VasburgArmory_To_TheEternalGrove.py"
 TSUMEI_ROUTE = SHING_JEA / "_1_ShingJeaMonastery_To_TsumeiVillage.py"
@@ -29,6 +30,7 @@ ELONA_SEEKERS_ROUTE = MAPS / "Tyria - Desert Outposts" / "_4_ElonaReach_to_Seeke
 HARVEST_ROUTE = JADE_SEA / "_7_HarvestTemple_To_UnwakingWatersKurzick.py"
 BASALT_ROUTE = DESOLATION / "_1_BonePalace_To_BasaltGrotto.py"
 LAIR_ROUTE = DESOLATION / "_2_BonePalace_To_LairOfTheForgotten.py"
+KEY_OF_AHDASHIM_ROUTE = REVELRY_ELONA / "_6_dashavestibule_to_hiddencityofahdashim.py"
 
 CANHTA_ROUTE_EXPECTATIONS = {
     JADE_SEA / "_1_Cavalon_To_BreakerHollow.py": "ROUTE-20260905-115546-323",
@@ -197,6 +199,21 @@ class SharedRouteMechanicsTests(unittest.TestCase):
             step_name="Leave outpost",
         )
         self.assertEqual(calls, [("portal", [(0.0, 0.0), (100.0, 0.0), (550.0, 0.0)], (2, "Leave outpost", None))])
+
+    def test_dialogue_departure_starts_inside_the_outpost(self) -> None:
+        mechanics = _load_mechanics()
+        self.assertFalse(
+            mechanics.requires_physical_outpost_departure(
+                434,
+                [{"map_id": 434, "steps": [{"type": "npc_dialog_sequence"}]}],
+            )
+        )
+        self.assertTrue(
+            mechanics.requires_physical_outpost_departure(
+                434,
+                [{"map_id": 419, "path": [(0.0, 0.0)]}],
+            )
+        )
 
     def test_transition_segment_uses_public_owner_and_resume_key(self) -> None:
         mechanics = _load_mechanics()
@@ -392,6 +409,10 @@ class SharedRouteMechanicsTests(unittest.TestCase):
                     "register_outpost_departure = _route_mechanics.register_outpost_departure",
                     source,
                 )
+                self.assertIn(
+                    "requires_physical_outpost_departure = _route_mechanics.requires_physical_outpost_departure",
+                    source,
+                )
                 self.assertIn("register_botting_segment", source)
 
 
@@ -401,6 +422,7 @@ class CapturedRouteTests(unittest.TestCase):
             HARVEST_ROUTE: "ROUTE-20260910-180114-736",
             BASALT_ROUTE: "ROUTE-20260902-140340-849",
             LAIR_ROUTE: "ROUTE-20260910-151459-766",
+            KEY_OF_AHDASHIM_ROUTE: "ROUTE-20260825-144829-324",
         }
         for route, capture_id in expected.items():
             with self.subTest(route=route.name):
@@ -419,6 +441,18 @@ class CapturedRouteTests(unittest.TestCase):
         self.assertEqual(dialog_step["model_id_or_encoded_name"], 3435)
         self.assertEqual(dialog_step["button_numbers"], [0, 0, 0])
         self.assertNotIn("visible_button_labels", dialog_step)
+        key_data = _route_assignments(KEY_OF_AHDASHIM_ROUTE)
+        key_outpost_path = next(value for key, value in key_data.items() if key.endswith("_outpost_path"))
+        key_segments = next(value for key, value in key_data.items() if key.endswith("_segments"))
+        self.assertEqual(key_outpost_path, [])
+        self.assertEqual(
+            [step["type"] for step in key_segments[0]["steps"]],
+            ["path", "npc_dialog_sequence"],
+        )
+        key_dialog = key_segments[0]["steps"][1]
+        self.assertEqual(key_dialog["model_id_or_encoded_name"], 4646)
+        self.assertEqual(key_dialog["button_numbers"], [0, 0])
+        self.assertNotIn("visible_button_labels", key_dialog)
         for route in (BASALT_ROUTE, LAIR_ROUTE):
             segments = next(value for key, value in _route_assignments(route).items() if key.endswith("_segments"))
             step_types = [step["type"] for segment in segments for step in segment.get("steps", [])]
