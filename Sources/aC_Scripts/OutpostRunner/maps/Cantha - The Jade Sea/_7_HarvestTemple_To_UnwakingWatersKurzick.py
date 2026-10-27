@@ -120,15 +120,11 @@ _7_harvesttemple_to_unwakingwaterskurzick_segments = [
             {
                 'type': 'npc_dialog_sequence',
                 'name': 'Gatekeeper Dedrick transfer to Unwaking Waters Kurzick',
-                'model_id': 3435,
+                'model_id_or_encoded_name': 3435,
                 'target_name': 'Gatekeeper Dedrick',
                 'target_xy': (-10449.00, -55.00),
                 'player_approach_xy': (-10429.37, 21.51),
-                'visible_button_labels': (
-                    'We have business in Unwaking Waters.',
-                    'We are ready.',
-                    'Yes.',
-                ),
+                'button_numbers': [0, 0, 0],
                 'target_map_id': outpost_name_to_id['Unwaking Waters Kurzick'],
                 'capture_ids': (
                     'NPC-20260910-180722-960',

@@ -10,6 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 MECHANICS = ROOT / "Sources" / "aC_Scripts" / "OutpostRunner" / "route_mechanics.py"
+DIALOGS_OWNER = ROOT / "Py4GWCoreLib" / "botting_src" / "subclases_src" / "DIALOGS_src.py"
 RUNNER = ROOT / "Widgets" / "Automation" / "Bots" / "Runners" / "OutpostRunnerV2.py"
 FIGHTER = ROOT / "Widgets" / "Automation" / "Bots" / "Runners" / "OutpostFighter.py"
 MAPS = ROOT / "Sources" / "aC_Scripts" / "OutpostRunner" / "maps"
@@ -143,6 +144,23 @@ class SharedRouteMechanicsTests(unittest.TestCase):
             def AddCustomState(execute_fn, name):
                 calls.append(("custom", execute_fn, name))
 
+        class Dialogs:
+            @staticmethod
+            def MoveAndAutoDialogByModelID(
+                model_id_or_encoded_name,
+                button_numbers,
+                target_map_id,
+                timeout_ms=90000,
+                step_name="",
+            ):
+                calls.append(
+                    (
+                        "canonical_dialog",
+                        (model_id_or_encoded_name, list(button_numbers)),
+                        (target_map_id, timeout_ms, step_name),
+                    )
+                )
+
         return (
             types.SimpleNamespace(
                 Move=Move,
@@ -150,6 +168,7 @@ class SharedRouteMechanicsTests(unittest.TestCase):
                 Wait=Wait,
                 Party=Party,
                 States=States,
+                Dialogs=Dialogs,
             ),
             calls,
         )
@@ -309,7 +328,7 @@ class SharedRouteMechanicsTests(unittest.TestCase):
             ["path", "flag", "condition", "gadget", "condition", "unflag"],
         )
 
-    def test_dialog_sequence_uses_existing_visible_choice_owner_and_map_wait(self) -> None:
+    def test_dialog_sequence_uses_canonical_multi_page_owner(self) -> None:
         mechanics = _load_mechanics()
         bot, calls = self._bot()
         owns_map_travel = mechanics.register_botting_segment(
@@ -322,9 +341,8 @@ class SharedRouteMechanicsTests(unittest.TestCase):
                     {
                         "type": "npc_dialog_sequence",
                         "name": "Gatekeeper Dedrick transfer",
-                        "target_xy": (10.0, 20.0),
-                        "player_approach_xy": (9.0, 19.0),
-                        "visible_button_labels": ("One", "Two", "Three"),
+                        "model_id_or_encoded_name": 3435,
+                        "button_numbers": [0, 0, 0],
                         "target_map_id": 2,
                     }
                 ],
@@ -332,9 +350,27 @@ class SharedRouteMechanicsTests(unittest.TestCase):
         )
         self.assertTrue(owns_map_travel)
         self.assertEqual(
-            [call[0] for call in calls],
-            ["path", "npc", "custom", "custom", "custom", "map_load"],
+            calls,
+            [
+                (
+                    "canonical_dialog",
+                    (3435, [0, 0, 0]),
+                    (2, 90_000, "Gatekeeper Dedrick transfer"),
+                )
+            ],
         )
+
+    def test_botting_dialog_adapter_uses_exact_canonical_transaction(self) -> None:
+        source = DIALOGS_OWNER.read_text(encoding="utf-8")
+        self.assertIn("tree = BT.Sequence(", source)
+        self.assertIn('name="Move through fixed multi-page dialogue"', source)
+        self.assertIn("children=[", source)
+        self.assertIn("BT.MoveAndAutoDialogByModelID(", source)
+        self.assertIn("modelID_or_encStr=model_id_or_encoded_name", source)
+        self.assertIn("button_number=list(button_numbers)", source)
+        self.assertIn("BT.WaitForMapLoad(", source)
+        self.assertIn("map_id=target_map_id", source)
+        self.assertIn("yield from _run_bt_tree(tree, return_bool=True)", source)
 
     def test_route_helper_contains_no_private_or_parallel_interaction_owner(self) -> None:
         source = MECHANICS.read_text(encoding="utf-8")
@@ -344,6 +380,7 @@ class SharedRouteMechanicsTests(unittest.TestCase):
         self.assertIn("bot.Move.FollowPathAndExitMap", source)
         self.assertIn("bot.Interact.WithNpcAtXY", source)
         self.assertIn("bot.Interact.WithGadgetAtXY", source)
+        self.assertIn("bot.Dialogs.MoveAndAutoDialogByModelID", source)
         self.assertIn("Routines.Yield.Player.SendAutomaticDialog", source)
 
     def test_both_consumers_bind_shared_public_route_mechanics(self) -> None:
@@ -378,6 +415,10 @@ class CapturedRouteTests(unittest.TestCase):
             "steps"
         ]
         self.assertEqual([step["type"] for step in harvest_steps], ["path", "npc_dialog_sequence"])
+        dialog_step = harvest_steps[1]
+        self.assertEqual(dialog_step["model_id_or_encoded_name"], 3435)
+        self.assertEqual(dialog_step["button_numbers"], [0, 0, 0])
+        self.assertNotIn("visible_button_labels", dialog_step)
         for route in (BASALT_ROUTE, LAIR_ROUTE):
             segments = next(value for key, value in _route_assignments(route).items() if key.endswith("_segments"))
             step_types = [step["type"] for segment in segments for step in segment.get("steps", [])]

@@ -209,21 +209,16 @@ def _register_npc_dialog_sequence(
     data: dict[str, Any],
     label: str,
 ) -> None:
-    approach_xy = _xy(data, "player_approach_xy")
-    target_xy = _xy(data, "target_xy")
+    model_id_or_encoded_name = data["model_id_or_encoded_name"]
+    button_numbers = [int(value) for value in data["button_numbers"]]
     target_map_id = int(data["target_map_id"])
-    bot.Move.FollowAutoPath([approach_xy], step_name=f"{label}: approach")
-    bot.Interact.WithNpcAtXY(*target_xy, step_name=f"{label}: interact")
-    for choice_index, _choice_label in enumerate(
-        tuple(data["visible_button_labels"]),
-        start=1,
-    ):
-        _register_automatic_dialog(
-            bot,
-            0,
-            f"{label}: visible choice {choice_index}",
-        )
-    bot.Wait.ForMapLoad(target_map_id=target_map_id, timeout_ms=90_000)
+    bot.Dialogs.MoveAndAutoDialogByModelID(
+        model_id_or_encoded_name=model_id_or_encoded_name,
+        button_numbers=button_numbers,
+        target_map_id=target_map_id,
+        timeout_ms=90_000,
+        step_name=label,
+    )
 
 
 def register_botting_segment(
